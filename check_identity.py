@@ -13,4 +13,4 @@ def check_photo_identity(identity_path, capture_path):
 
     return results[0]
 
-print(check_photo_identity('2.bmp', 'Trust.jpg'))
+print(check_photo_identity('sample.bmp', 'Trust.jpg'))

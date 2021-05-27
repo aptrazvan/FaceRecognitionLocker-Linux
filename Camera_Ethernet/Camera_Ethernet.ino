@@ -551,15 +551,10 @@ void StringPgm(const char * str){
 }
 #include <Ethernet.h>
 #include <SPI.h>
-#include <SD.h>
 
-File myFile[10];
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 byte ip[] = { 192, 168, 1, 45 }; // ip
 byte server[] = { 192, 168, 1, 105 }; // the server
-String format = String(".txt");
-int iteration = 0;
-EthernetClient client;
 
 EthernetUDP Udp;
 
@@ -568,14 +563,14 @@ static void captureImg(uint16_t wg, uint16_t hg){
   byte b;
   //Serial.println("iteration" + String(iteration));
   //Serial.flush();
-  byte buf[320];
+  byte buf[1280];
   StringPgm(PSTR("*RDY*"));
   
   int current_byte = 0;
 
   //while (!(PINB & 2));//wait for high
   //while ((PINB & 2));//wait for low
-
+  _delay_ms(100);
     y = hg;
   while (y--){
         x = wg;
@@ -583,19 +578,21 @@ static void captureImg(uint16_t wg, uint16_t hg){
       while ((PIND & 4));//wait for low
       buf[current_byte++] = (PINC & 15) | (PIND & 160) | ((PINB & 2) << 5);
 
-      if (current_byte == 320) {
-        //client.write(buf, 10);
-        Udp.beginPacket(server, 50000);
-        Udp.write(buf,320);
-        Udp.endPacket();
-        current_byte = 0;
-      }
-      UDR0 = (PINC & 15) | (PIND & 160) | ((PINB & 2) << 5);
-      while (!(UCSR0A & (1 << UDRE0)));//wait for byte to transmit
+      
+      //UDR0 = (PINC & 15) | (PIND & 160) | ((PINB & 2) << 5);
+      //while (!(UCSR0A & (1 << UDRE0)));//wait for byte to transmit
       while (!(PIND & 4));//wait for high
       while ((PIND & 4));//wait for low
       while (!(PIND & 4));//wait for high
     }
+
+    if (current_byte >= 1280) {
+        //client.write(buf, 10);
+        Udp.beginPacket(server, 50000);
+        Udp.write(buf,1280);
+        Udp.endPacket();
+        current_byte = 0;
+      }
   }
   _delay_ms(100);
   //Serial.println(F("Finished"));
@@ -604,7 +601,7 @@ static void captureImg(uint16_t wg, uint16_t hg){
 }
 
 void setup(){
-  Serial.begin(1000000);
+  //Serial.begin(1000000);
   Ethernet.begin(mac, ip);
   
   //if (!client.connect(server, 50000)) {
@@ -631,9 +628,9 @@ void loop(){
   //Serial.println(String(iteration) + format);
   //Serial.flush();
 
-  for (iteration = 0; iteration < 10; iteration++) {
+  //for (iteration = 0; iteration < 10; iteration++) {
     captureImg(320, 240);
-  }
+  //}
     
 
 //  for (iteration = 0; iteration < 10; iteration++) {
