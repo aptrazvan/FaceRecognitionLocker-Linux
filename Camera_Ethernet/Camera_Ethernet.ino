@@ -526,7 +526,9 @@ void arduinoUnoInut(void) {
   OCR0A = 0;//(F_CPU)/(2*(X+1))
   DDRC &= ~15;//low d0-d3 camera
   DDRB &= ~(1 << 1);
-  DDRD &= ~172;//d7-d4 and interrupt pins
+  DDRD &= ~188;//d7-d4 and interrupt pins
+  pinMode(0, INPUT_PULLUP);
+  pinMode(1, OUTPUT);
   _delay_ms(3000);
   
     //set up twi for 100khz
@@ -555,6 +557,7 @@ void StringPgm(const char * str){
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 byte ip[] = { 192, 168, 1, 45 }; // ip
 byte server[] = { 192, 168, 1, 105 }; // the server
+char received_string[] = "Failed";
 
 EthernetUDP Udp;
 
@@ -576,7 +579,7 @@ static void captureImg(uint16_t wg, uint16_t hg){
         x = wg;
     while (x--){
       while ((PIND & 4));//wait for low
-      buf[current_byte++] = (PINC & 15) | (PIND & 160) | ((PINB & 2) << 5);
+      buf[current_byte++] = (PINC & 15) | (PIND & 176) | ((PINB & 2) << 5);
 
       
       //UDR0 = (PINC & 15) | (PIND & 160) | ((PINB & 2) << 5);
@@ -625,65 +628,24 @@ void setup(){
 
 
 void loop(){
-  //Serial.println(String(iteration) + format);
-  //Serial.flush();
+  if (digitalRead(0) == LOW) {
+    for (int i = 0; i < 5; i++) {
+      captureImg(320, 240);
+    }
 
-  //for (iteration = 0; iteration < 10; iteration++) {
-    captureImg(320, 240);
-  //}
+    _delay_ms(1000);
     
+    int packetSize = Udp.parsePacket();
+    if (packetSize) {
+      digitalWrite(1, HIGH);
 
-//  for (iteration = 0; iteration < 10; iteration++) {
-//     myFile[iteration] = SD.open(String(iteration) + format);
-//  }
-//
-//  for (iteration = 0; iteration < 10; iteration++) {
-//    if (myFile[iteration]) {
-//  
-//      // read from the file until there's nothing else in it:
-//  //    while (myFile.available()) {
-//  //      client.write(myFile.read());
-//  //    }
-//      byte clientBuf[64];
-//      int clientCount = 0;
-//      unsigned long size_remaining = myFile[iteration].size();
-//  
-//      while(size_remaining)
-//      {
-//        clientBuf[clientCount++] = myFile[iteration].read();
-//        size_remaining--;
-//        Serial.println(clientBuf[clientCount - 1], DEC);
-//        Serial.flush();
-//  
-//        if(clientCount > 63)
-//        {
-//          //client.write(clientBuf, 64);
-//          Udp.beginPacket(server, 50000);
-//          Udp.write(clientBuf,64);
-//          Udp.endPacket();
-//          clientCount = 0;
-//        }
-//      }
-//      
-//      if (clientCount > 0) {
-//        //client.write(clientBuf, clientCount);
-//        Udp.beginPacket(server, 50000);
-//        Udp.write(clientBuf,clientCount);
-//        Udp.endPacket();
-//      }
-//      
-//      //Serial.println(F("done sending"));
-//      //Serial.flush();
-//      // close the file:
-//      myFile[iteration].close();
-//    } else {
-//      // if the file didn't open, print an error:
-//      //Serial.println(F("error opening test.txt"));
-//      //Serial.flush();
-//      while (true);
-//    }
-//  }
-// 
-
-  
+      while (packetSize) {
+        packetSize = Udp.parsePacket();
+      }
+      
+      _delay_ms(2000);
+      digitalWrite(1, LOW);
+    
+    }
+  }
 }

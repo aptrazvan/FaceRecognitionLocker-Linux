@@ -62,5 +62,5 @@ def convert():
         index += 1
 
 
-convert()
+convert_files()
 

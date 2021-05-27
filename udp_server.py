@@ -22,7 +22,7 @@ data = bytearray()
 
 
 while True:
-    data += s.recvfrom(320)[0]
+    data += s.recvfrom(1280)[0]
     
     if len(data) == 76800:
         output_file = open(str(index) + '.txt', 'wb')
