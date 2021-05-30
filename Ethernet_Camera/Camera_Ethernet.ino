@@ -515,193 +515,106 @@ void camInit(void){
   wrReg(REG_COM10, 32);//PCLK does not toggle on HBLANK.
 }
 
-void arduinoUnoInut(void) {
-  cli();//disable interrupts
+#include <Ethernet.h>
+#include <SPI.h>
+
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; // microcontroller's MAC address
+byte ip[] = { 192, 168, 1, 45 }; // microcontroller's IP address
+byte server[] = { 192, 168, 1, 105 }; // server's IP address
+const PROGMEM unsigned long int local_port = 8888;
+const PROGMEM unsigned long int server_port = 50000;
+const PROGMEM unsigned int NUMBER_OF_CAPTURES = 5;
+const PROGMEM unsigned int BUFFER_SIZE = 1280;
+const PROGMEM unsigned int WIDTH = 320;
+const PROGMEM unsigned int HEIGHT = 240;
+
+EthernetUDP Udp;
+
+void arduinoUnoInit(void) {
+  cli(); // disable interrupts
   
-    /* Setup the 8mhz PWM clock
-  * This will be on pin 11*/
-  DDRB |= (1 << 1);//pin 9
+  // setup the 8mhz PWM clock on pin 6
   DDRD |= (1 << 6);
   TCCR0A = (1 << COM0A0) | (1 << WGM01) | (1 << WGM00);
   TCCR0B = (1 << WGM02) | (1 << CS00);
-  OCR0A = 0;//(F_CPU)/(2*(X+1))
-  DDRC &= ~15;//low d0-d3 camera
-  DDRD &= ~172;//d7-d4 and interrupt pins
+  OCR0A = 0; // (F_CPU)/(2*(X+1))
+  DDRC &= ~15; // A0-A3 pins
+  DDRB &= ~(1 << 1); // pin D9, connected to camera's D6
+  DDRD &= ~188; // D2-D5, D7
+  pinMode(0, INPUT_PULLUP); // button input
+  pinMode(1, OUTPUT); // relay output
+  digitalWrite(1, HIGH); // keep the lock in the locked state
   _delay_ms(3000);
   
-    //set up twi for 100khz
-  TWSR &= ~3;//disable prescaler for TWI
-  TWBR = 72;//set to 100khz
-  
-    //enable //Serial
-  //UBRR0H = 0;
-  //UBRR0L = 207;//0 = 2M baud rate. 1 = 1M baud. 3 = 0.5M. 7 = 250k 207 is 9600 baud rate.
-  //UCSR0A |= 2;//double speed aysnc
-  //UCSR0B = (1 << RXEN0) | (1 << TXEN0);//Enable receiver and transmitter
-  //UCSR0C = 6;//async 1 stop bit 8bit char no parity bits
+  // set up twi for 100khz
+  TWSR &= ~3; // disable prescaler for TWI
+  TWBR = 72; // set to 100khz
 }
-
-
-void StringPgm(const char * str){
-  do{
-      while (!(UCSR0A & (1 << UDRE0)));//wait for byte to transmit
-      UDR0 = pgm_read_byte_near(str);
-      while (!(UCSR0A & (1 << UDRE0)));//wait for byte to transmit
-  } while (pgm_read_byte_near(++str));
-}
-#include <Ethernet.h>
-#include <SPI.h>
-#include <SD.h>
-
-File myFile[10];
-byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
-byte ip[] = { 192, 168, 1, 45 }; // ip
-byte server[] = { 192, 168, 1, 105 }; // the server
-String format = String(".txt");
-int iteration = 0;
-EthernetClient client;
-
-EthernetUDP Udp;
 
 static void captureImg(uint16_t wg, uint16_t hg){
   uint16_t y, x;
   byte b;
-  //Serial.println("iteration" + String(iteration));
-  //Serial.flush();
-
-  if (SD.exists(String(iteration) + format)) {
-    SD.remove(String(iteration) + format);
-  }
+  byte buf[BUFFER_SIZE];
   
-  myFile[0] = SD.open(String(iteration) + format, FILE_WRITE);
-
-  if (!myFile[0]) {
-    Serial.println(F("error opening"));
-    Serial.flush();
-    while(1){}
-  }
-
-  StringPgm(PSTR("*RDY*"));
-  byte buf[320];
   int current_byte = 0;
 
-  //while (!(PINB & 2));//wait for high
-  //while ((PINB & 2));//wait for low
-
+  _delay_ms(100);
     y = hg;
   while (y--){
         x = wg;
     while (x--){
-      while ((PIND & 4));//wait for low
-      buf[current_byte++] = (PINC & 15) | (PIND & 160) | ((PINB & 2) << 5);
-      Serial.println(buf[current_byte - 1], DEC);
-      Serial.flush();
+      while ((PIND & 4)); // wait for low
+      // save the image data from pins A0-A3, D4, D5, D7 and D9
+      buf[current_byte++] = (PINC & 15) | (PIND & 176) | ((PINB & 2) << 5);
+      while (!(PIND & 4)); // wait for high
+      while ((PIND & 4)); // wait for low
+      while (!(PIND & 4)); // wait for high
+    }
 
-      if (current_byte == 320) {
-        myFile[0].write(buf, 320);
+    if (current_byte >= BUFFER_SIZE) {
+        // send data in chunks of 1280 bytes
+        Udp.beginPacket(server, server_port);
+        Udp.write(buf, BUFFER_SIZE);
+        Udp.endPacket();
         current_byte = 0;
       }
-      UDR0 = (PINC & 15) | (PIND & 160) | ((PINB & 2) << 5);
-      while (!(UCSR0A & (1 << UDRE0)));//wait for byte to transmit
-      while (!(PIND & 4));//wait for high
-      while ((PIND & 4));//wait for low
-      while (!(PIND & 4));//wait for high
-    }
   }
   _delay_ms(100);
-  //Serial.println(F("Finished"));
-  //Serial.flush();
-  myFile[0].close();
 }
 
 void setup(){
-  Serial.begin(1000000);
   Ethernet.begin(mac, ip);
+  Udp.begin(local_port);
   
-  //if (!client.connect(server, 50000)) {
-  //  Serial.println(F("connection failed"));
-  //  while(true);
-  //}
-  Udp.begin(8888);
-
-  if (!SD.begin(4)) {
-    Serial.println(F("initialization failed!"));
-    while (true);
-  }
-  //Serial.println(F("initialization done."));
-
-  // open the file. note that only one file can be open at a time,
-  // so you have to close this one before opening another.
-  
-  arduinoUnoInut();
+  arduinoUnoInit();
   camInit();
   setRes();
   setColor();
-  wrReg(0x11, 16); //Earlier it had the value: wrReg(0x11, 12); New version works better for me :) !!!!
-  
+  wrReg(0x11, 14);
 }
 
 
 void loop(){
-  //Serial.println(String(iteration) + format);
-  //Serial.flush();
+  if (digitalRead(0) == LOW) {
+    // take the photos
+    for (int i = 0; i < NUMBER_OF_CAPTURES; i++) {
+      captureImg(WIDTH, HEIGHT);
+    }
 
-  for (iteration = 0; iteration < 10; iteration++) {
-    //captureImg(320, 240);
-  }
-    
+    _delay_ms(1000);
 
-  for (iteration = 0; iteration < 10; iteration++) {
-     myFile[iteration] = SD.open(String(iteration) + format);
-  }
+    // on success, the microcontroller will receive one or more UDP packet
+    int packetSize = Udp.parsePacket();
+    if (packetSize) {
+      digitalWrite(1, LOW); //unlock for 2 seconds
 
-  for (iteration = 0; iteration < 10; iteration++) {
-    if (myFile[iteration]) {
-  
-      // read from the file until there's nothing else in it:
-  //    while (myFile.available()) {
-  //      client.write(myFile.read());
-  //    }
-      byte clientBuf[64];
-      int clientCount = 0;
-      unsigned long size_remaining = myFile[iteration].size();
-  
-      while(size_remaining)
-      {
-        clientBuf[clientCount++] = myFile[iteration].read();
-        size_remaining--;
-        Serial.println(clientBuf[clientCount - 1], DEC);
-        Serial.flush();
-  
-        if(clientCount > 63)
-        {
-          //client.write(clientBuf, 64);
-          Udp.beginPacket(server, 50000);
-          Udp.write(clientBuf,64);
-          Udp.endPacket();
-          clientCount = 0;
-        }
+      // get the rest of the packets
+      while (packetSize) {
+        packetSize = Udp.parsePacket();
       }
       
-      if (clientCount > 0) {
-        //client.write(clientBuf, clientCount);
-        Udp.beginPacket(server, 50000);
-        Udp.write(clientBuf,clientCount);
-        Udp.endPacket();
-      }
-      
-      //Serial.println(F("done sending"));
-      //Serial.flush();
-      // close the file:
-      myFile[iteration].close();
-    } else {
-      // if the file didn't open, print an error:
-      //Serial.println(F("error opening test.txt"));
-      //Serial.flush();
-      while (true);
+      _delay_ms(2000);
+      digitalWrite(1, HIGH); // lock back
     }
   }
- 
-
-  
 }
